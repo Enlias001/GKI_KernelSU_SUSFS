@@ -1,0 +1,59 @@
+name: Build pearl vendor_boot for Droidspaces
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu‑22.04
+    env:
+      ARCH: arm64
+      TARGET_DEVICE: pearl
+      KERNEL_BRANCH: android13‑5.10‑release
+    steps:
+      - name: Checkout workspace
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y gcc‑aarch64‑linux‑gnu binutils‑aarch64‑linux‑gnu build‑essential libssl‑dev bison flex libelf‑dev git wget cpio unzip
+
+      - name: Clone GKI Common kernel 5.10
+        run: |
+          git clone --depth=1 -b ${{ env.KERNEL_BRANCH }} https://android.googlesource.com/kernel/common kernel‑common
+
+      - name: Clone Xiaomi pearl vendor kernel source
+        run: |
+          git clone --depth=1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git‑pearl‑t‑oss kernel‑vendor
+        continue-on-error: false
+
+      - name: Apply Droidspaces kABI & namespace patch
+        run: |
+          cd kernel‑vendor
+          cat > droidspaces‑namespace.patch <<'EOF'
+diff --git a/arch/arm64/configs/vendor/pearl_defconfig b/arch/arm64/configs/vendor/pearl_defconfig
+index xxxxxxx..yyyyyyy 100644
+--- a/arch/arm64/configs/vendor/pearl_defconfig
++++ b/arch/arm64/configs/vendor/pearl_defconfig
+@@ -EOF_INSERT+0,0 @@
++CONFIG_NAMESPACES=y
++CONFIG_PID_NS=y
++CONFIG_IPC_NS=y
++CONFIG_USER_NS=y
++CONFIG_SYSVIPC=y
++CONFIG_POSIX_MQUEUE=y
++CONFIG_DEVTMPFS=y
+EOF
+          git apply droidspaces‑namespace.patch
+
+      - name: Build vendor_boot only(GKI2, reuse common prebuilt kernel)
+        run: |
+          cd kernel‑vendor
+          make ARCH=arm64 CROSS_COMPILE=aarch64‑linux‑gnu‑ pearl_defconfig
+          make ARCH=arm64 CROSS_COMPILE=aarch64‑linux‑gnu‑ -j$(nproc) vendor_boot
+
+      - name: Upload artifact vendor_boot‑new.img
+        uses: actions/upload‑artifact@v4
+        with:
+          name: vendor_boot‑pearl‑droidspaces
+          path: kernel‑vendor/out/vendor_boot.img
